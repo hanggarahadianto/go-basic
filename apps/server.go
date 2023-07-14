@@ -1,13 +1,20 @@
 package app
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"origin/database/seeders"
 	"os"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
+	"github.com/urfave/cli"
+
+	// "github.com/urfave/cli"
+
+	// "github.com/urfave/cli"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -33,17 +40,27 @@ type DBConfig struct {
 	DBPort		string
 }
 
-func (server *Server) Initialize(AppConfig AppConfig, DBConfig DBConfig){
-	pl("welcome to " + AppConfig.AppName)
+func (server *Server) Initialize(appConfig AppConfig, dbConfig DBConfig){
+	pl("welcome to " + appConfig.AppName)
+	server.initalizeRoutes() 
+
+}
 
 
+func (server *Server) Run(addr string){
+	pl("Listening to Port", addr)
+	log.Fatal(http.ListenAndServe(addr, server.Router))
+}
+
+
+func (server *Server) initializeDB(dbConfig DBConfig){
 	var err error
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Jakarta",
-			DBConfig.DBHost,
-			DBConfig.DBUser,
-			DBConfig.DBPassword,
-			DBConfig.DBName,
-			DBConfig.DBPort,
+			dbConfig.DBHost,
+			dbConfig.DBUser,
+			dbConfig.DBPassword,
+			dbConfig.DBName,
+			dbConfig.DBPort,
 		)
 	
 	server.DB , err =gorm.Open(postgres.Open(dsn), &gorm.Config{})
@@ -52,10 +69,14 @@ func (server *Server) Initialize(AppConfig AppConfig, DBConfig DBConfig){
 	}
 		pl("succes to connect database")
 
-	server.initalizeRoutes() 
+}
 
+	// seeders.DBSeed(server.DB)
+
+
+func (server *Server) dbMigrate(){
 	for _, model := range RegisterModels(){
-		err = server.DB.Debug().AutoMigrate(model.Model)
+		err := server.DB.Debug().AutoMigrate(model.Model)
 
 		if err!= nil{
 			log.Fatal(err)
@@ -63,13 +84,39 @@ func (server *Server) Initialize(AppConfig AppConfig, DBConfig DBConfig){
 
 	}
 	pl("Database migrated")
-
 }
 
-func (server *Server) Run(addr string){
-	pl("Listening to Port", addr)
-	log.Fatal(http.ListenAndServe(addr, server.Router))
+
+func (server *Server) initCommands(config AppConfig, dbConfig DBConfig){
+	server.initializeDB(dbConfig)
+
+	cmdApp := cli.NewApp()
+	cmdApp.Commands = []cli.Command{
+		{
+			Name: "db:migrate",
+			Action: func(c *cli.Context)error{
+				server.dbMigrate()
+				return nil
+			},
+		},
+		{
+			Name: "db:seed",
+			Action: func(c *cli.Context) error {
+				err := seeders.DBSeed(server.DB)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				return nil
+			},
+		},
+	}
+	err := cmdApp.Run(os.Args)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
+
 
 func getEnv(key, fallback string)string{
 	if value, ok := os.LookupEnv(key); ok {
@@ -80,8 +127,8 @@ func getEnv(key, fallback string)string{
 
 func Run(){
 	var server = Server{}
-	var AppConfig = AppConfig{}
-	var DBConfig = DBConfig{}
+	var appConfig = AppConfig{}
+	var dbConfig = DBConfig{}
 
 	err := godotenv.Load()
 	if err !=nil {
@@ -89,18 +136,29 @@ func Run(){
 	}
 
 
-	AppConfig.AppName	 = getEnv("APP_NAME", "GO TOKO")
-	AppConfig.AppEnv 	 = getEnv("APP_ENV", "development")
-	AppConfig.AppPort 	 = getEnv("APP_PORT", "8080")
+
+
+	appConfig.AppName	 = getEnv("APP_NAME", "GO TOKO")
+	appConfig.AppEnv 	 = getEnv("APP_ENV", "development")
+	appConfig.AppPort 	 = getEnv("APP_PORT", "8080")
 	
-	DBConfig.DBHost 	= getEnv("DB_HOST", "localhost")
-	DBConfig.DBUser		= getEnv("DB_USER", "postgres")
-	DBConfig.DBPassword = getEnv("DB_PASSWORD", "12345678")
-	DBConfig.DBName		= getEnv("DB_NAME", "go")
-	DBConfig.DBPort		= getEnv("DB_PORT", "5432")
+	dbConfig.DBHost 	= getEnv("DB_HOST", "localhost")
+	dbConfig.DBUser		= getEnv("DB_USER", "postgres")
+	dbConfig.DBPassword = getEnv("DB_PASSWORD", "12345678")
+	dbConfig.DBName		= getEnv("DB_NAME", "go")
+	dbConfig.DBPort		= getEnv("DB_PORT", "5432")
 
+	// -------------------------------
 
-	server.Initialize(AppConfig, DBConfig)
-	server.Run(":" + AppConfig.AppPort)
+	flag.Parse()
+	arg := flag.Arg(0)
+	if arg != "" {
+		server.initCommands(appConfig, dbConfig)
+	}else{
+		server.Initialize(appConfig, dbConfig)
+		server.Run(":" + appConfig.AppPort)
+
+	}
+	
 
 }
