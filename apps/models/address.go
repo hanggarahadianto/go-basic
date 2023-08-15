@@ -1,21 +1,13 @@
 package models
 
-import "time"
+import "github.com/google/uuid"
 
-type Address struct {	
-	ID			string
-	Name 		string
-	IsPrimary	bool
-	ProvienceID	string
-	CityID		string
-	Address1	string
-	Address2	string
-	Phone		string
-	Email		string
-	PostCode	string
-	CreatedAt	time.Time
-	UpdatedAt	time.Time
-	User User
-	UserID 		string
+type Address struct{
+
+	ID			uuid.UUID			`json:"adrdess_id"`
+	House		string
+	Street		string
+	City		string
+	Pincode		string		
 
 }
